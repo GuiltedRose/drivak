@@ -22,7 +22,7 @@
 
 # Folders
 build/
-./VScode
+.vscode/
 
 # Compiled Static libraries
 *.lai
