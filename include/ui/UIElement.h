@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include <glm/vec2.hpp>
+#include "core/vec2.h"
 
 class UIElement {
 public:
@@ -13,12 +13,12 @@ public:
 
     virtual void draw() = 0;
 
-    glm::vec2 getPosition() const;
-    glm::vec2 getSize() const;
+    vec2 getPosition() const;
+    vec2 getSize() const;
     bool isVisible() const;
 
 protected:
-    glm::vec2 position;
-    glm::vec2 size;
+    vec2 position;
+    vec2 size;
     bool visible = true;
 };
