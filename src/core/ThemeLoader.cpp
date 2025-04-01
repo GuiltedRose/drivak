@@ -1,7 +1,8 @@
+#undef slots
+#include <Python.h>
 #include "core/ThemeLoader.h"
 #include "core/DataPaths.h"
 #include "config/example_theme.h"
-#include <Python.h>
 #include <QFile>
 #include <QTextStream>
 #include <QDir>

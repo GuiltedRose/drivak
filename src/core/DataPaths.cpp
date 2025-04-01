@@ -28,8 +28,7 @@ namespace DataPaths {
     QString scripts() { return join("scripts"); }
     QString logs() { return join("logs"); }
     QString defaultModPath() { return join("mods/default_mod"); }
-
-    inline QString ignoreFiles() { return join(".drivakignore"); }
+    QString ignoreFiles() { return join(".drivakignore"); }
 
     void ensureALL() {
         QDir baseDir(base());
@@ -41,7 +40,7 @@ namespace DataPaths {
         QDir().mkpath(config());
         QDir().mkpath(logs());
 
-        QString ignorePath = ignoreFiles();
+       QString ignorePath = ignoreFiles();
         if (!QFile::exists(ignorePath)) {
             QFile file(ignorePath);
             if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {

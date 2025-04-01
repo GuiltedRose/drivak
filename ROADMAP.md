@@ -26,7 +26,7 @@
 
 [X] Stores toggles like copy_default_mods = False
 
-[] First-launch logic with beginner-safe prompts:
+[X] First-launch logic with beginner-safe prompts:
 
 [X] Ask user if they want default mods/scripts
 
@@ -46,11 +46,11 @@
 
 [] Planned Features for PDF Viewer:
 
-[] Search (with highlight)
+    [] Search (with highlight)
 
-[] Zoom, scroll, and sidebar outline
+    [] Zoom, scroll, and sidebar outline
 
-[] Bookmarking or tagging rules
+    [] Bookmarking or tagging rules
 
 ## [] Phase 4: Character Management Tools (Players)
 

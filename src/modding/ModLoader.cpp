@@ -1,32 +1,51 @@
-#define QT_NO_KEYWORDS
-
+#undef slots
+#include <Python.h>
 #include "modding/ModLoader.h"
 #include "core/DataPaths.h"
 #include "modding/example_mods.h"
-#include <Python.h>
-#include <filesystem>
-#include <fstream>
 #include <QDir>
 #include <QFile>
 #include <QTextStream>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QDebug>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 
 ModLoader::ModLoader(GameDB* db) : dbRef(db) {}
 
 bool ModLoader::validateModInfo(const QJsonObject& obj, const std::string& folder) {
-    QStringList requiredKeys = { "name", "version", "entry" };
-    for (const QString& key : requiredKeys) {
-        if (!obj.contains(key) || obj.value(key).toString().trimmed().isEmpty()) {
-            qWarning() << "[ModLoader] Invalid modinfo.json in" << QString::fromStdString(folder)
-                       << "- missing or empty key:" << key;
-            return false;
-        }
+    if (!obj.contains("name") || !obj.contains("version"))
+        return false;
+
+    std::string name = obj["name"].toString().toStdString();
+    std::string version = obj["version"].toString().toStdString();
+    std::string description = obj.contains("description") ? obj["description"].toString().toStdString() : "";
+
+    LoadedMod mod;
+    mod.name = name;
+    mod.path = folder;
+    mod.version = version;
+    mod.description = description;
+
+    loadedMods.push_back(mod);
+
+    if (dbRef) {
+        dbRef->addLoadedMod(ModRecord{
+            .name = name,
+            .version = version,
+            .path = folder,
+            .description = description
+        });
     }
+
     return true;
 }
 
 void ModLoader::ensureExampleModsInstalled(const std::string& modDirPath) {
+    std::filesystem::create_directories(modDirPath);
+
     for (const auto& mod : exampleMods) {
         std::filesystem::path fullPath = std::filesystem::path(modDirPath) / mod.filename;
         std::filesystem::create_directories(fullPath.parent_path());
@@ -46,7 +65,6 @@ void ModLoader::copyDefaultModsIfEmpty() {
     if (!modDir.exists()) QDir().mkpath(modsPath);
     if (!modDir.entryList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot).isEmpty()) return;
 
-    // Check if config.py disables this
     QString configPath = DataPaths::config() + "/config.py";
     if (QFile::exists(configPath)) {
         QFile file(configPath);
@@ -62,7 +80,6 @@ void ModLoader::copyDefaultModsIfEmpty() {
         }
     }
 
-    // Ask user if they want to install default mods
     std::string response;
     std::cout << "No mods found. Would you like to install example mods? [Y/n]: ";
     std::getline(std::cin, response);
@@ -72,128 +89,80 @@ void ModLoader::copyDefaultModsIfEmpty() {
         return;
     }
 
-    // Install example mods into the default mod folder
-    std::string defaultModDir = DataPaths::defaultModPath().toStdString();
-    ensureExampleModsInstalled(defaultModDir);
-    qDebug() << "[ModLoader] Example mods installed at" << QString::fromStdString(defaultModDir);
+    ensureExampleModsInstalled(DataPaths::defaultModPath().toStdString());
+    qDebug() << "[ModLoader] Example mods installed at" << modsPath;
 }
 
 bool ModLoader::loadMod(const std::string& folder) {
-    // Normalize and check .drivakignore
-    QString relativePath = QString::fromStdString(folder);
-    if (relativePath.startsWith(QDir(DataPaths::mods()).absolutePath())) {
-        relativePath = "mods/" + QDir(DataPaths::mods()).relativeFilePath(relativePath);
-    }
+    std::string entryPath = folder + "/entry.py";
 
-    if (ignore.isIgnored(relativePath)) {
-        qDebug() << "[ModLoader] Ignored mod via .drivakignore:" << relativePath;
+    if (!std::filesystem::exists(entryPath)) {
+        printf("Mod entry not found: %s\n", entryPath.c_str());
         return false;
     }
 
-    std::filesystem::path modinfoPath = std::filesystem::path(folder) / "modinfo.json";
-
-    std::string name = "Unknown Mod";
-    std::string description = "";
-    std::string version = "0.0";
-    std::string entryFile = "entry.py";
-
-    // Parse modinfo.json
-    if (std::filesystem::exists(modinfoPath)) {
-        QFile file(QString::fromStdString(modinfoPath.string()));
+    // --- Load and validate modinfo.json if it exists ---
+    QString modInfoPath = QString::fromStdString(folder + "/modinfo.json");
+    if (QFile::exists(modInfoPath)) {
+        QFile file(modInfoPath);
         if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
             QByteArray data = file.readAll();
-            QJsonDocument doc = QJsonDocument::fromJson(data);
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (!validateModInfo(obj, folder)) return false;
+            QJsonParseError parseError;
+            QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
 
-                name = obj.value("name").toString("Unnamed").toStdString();
-                description = obj.value("description").toString().toStdString();
-                version = obj.value("version").toString("0.0").toStdString();
-                entryFile = obj.value("entry").toString("entry.py").toStdString();
+            if (parseError.error != QJsonParseError::NoError) {
+                qWarning() << "[ModLoader] Failed to parse modinfo.json:" << parseError.errorString();
+            } else if (doc.isObject()) {
+                validateModInfo(doc.object(), folder);
             }
+        } else {
+            qWarning() << "[ModLoader] Could not open modinfo.json at" << modInfoPath;
         }
     }
 
-    // Check entry file
-    std::filesystem::path entryPath = std::filesystem::path(folder) / entryFile;
-    if (!std::filesystem::exists(entryPath)) {
-        std::cerr << "[ModLoader] Mod entry not found: " << entryPath << std::endl;
-        return false;
-    }
-
+    // --- Load and run entry.py ---
     if (!Py_IsInitialized()) {
         Py_Initialize();
     }
 
-    // Add mod dir to sys.path
     PyObject* sysPath = PySys_GetObject("path");
     PyObject* modPath = PyUnicode_FromString(folder.c_str());
     PyList_Append(sysPath, modPath);
     Py_DECREF(modPath);
 
-    std::string moduleName = entryFile.substr(0, entryFile.find_last_of('.'));
-    PyObject* pyModuleName = PyUnicode_FromString(moduleName.c_str());
-    PyObject* module = PyImport_Import(pyModuleName);
-    Py_DECREF(pyModuleName);
+    PyObject* moduleName = PyUnicode_FromString("entry");
+    PyObject* module = PyImport_Import(moduleName);
+    Py_DECREF(moduleName);
 
     if (!module) {
         PyErr_Print();
-        std::cerr << "[ModLoader] Failed to import module: " << moduleName << std::endl;
+        printf("Failed to import mod: %s\n", folder.c_str());
         return false;
     }
 
-    LoadedMod mod;
-    mod.name = name;
-    mod.path = folder;
-    mod.description = description;
-    mod.version = version;
-
-    mod.on_game_start = PyObject_GetAttrString(module, "on_game_start");
-    if (!mod.on_game_start || !PyCallable_Check(mod.on_game_start)) {
-        Py_XDECREF(mod.on_game_start);
-        mod.on_game_start = nullptr;
+    PyObject* func = PyObject_GetAttrString(module, "main");
+    if (func && PyCallable_Check(func)) {
+        PyObject* result = PyObject_CallObject(func, nullptr);
+        if (!result) {
+            PyErr_Print();
+        } else {
+            Py_DECREF(result);
+        }
     }
 
-    mod.on_area_enter = PyObject_GetAttrString(module, "on_area_enter");
-    if (!mod.on_area_enter || !PyCallable_Check(mod.on_area_enter)) {
-        Py_XDECREF(mod.on_area_enter);
-        mod.on_area_enter = nullptr;
-    }
-
+    Py_XDECREF(func);
     Py_DECREF(module);
-    loadedMods.push_back(mod);
-
-    if (dbRef) {
-        dbRef->addLoadedMod(new ModRecord{
-            .name = name,
-            .version = version,
-            .path = folder,
-            .description = description
-        });
-    }
-
-    std::cout << "[ModLoader] Loaded mod: " << name
-              << " v" << version
-              << (description.empty() ? "" : " - " + description)
-              << std::endl;
-
     return true;
 }
 
 void ModLoader::loadAllMods() {
     QDir modDir(QString::fromStdString(DataPaths::mods().toStdString()));
-    for (const QString& modFolder : modDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
-        QString relPath = "mods/" + modFolder;
-        if (ignore.isIgnored(relPath)) {
-            qDebug() << "[ModLoader] Skipped (ignored):" << relPath;
-            continue;
-        }
-
-        std::string fullPath = modDir.filePath(modFolder).toStdString();
-        loadMod(fullPath);
+    for (const auto& entry : modDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        std::string path = modDir.filePath(entry).toStdString();
+        loadMod(path);
     }
 }
 
-
-
+const std::vector<LoadedMod>& ModLoader::getLoadedMods() const {
+    return loadedMods;
+}

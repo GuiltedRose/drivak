@@ -11,8 +11,7 @@ namespace DataPaths {
     QString logs();
     QString config();
     QString defaultModPath();
-
-    inline QString ignoreFiles();
+    QString ignoreFiles();
 
 
     void ensureALL();

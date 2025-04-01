@@ -1,8 +1,17 @@
 #pragma once
 
-#include <string>
 #include "gamedb/GameDB.h"
 #include "core/IgnoreFilter.h"
+#include <string>
+#include <QJsonObject>
+
+struct LoadedMod {
+    std::string name;
+    std::string path;
+    std::string description;
+    std::string version;
+};
+
 
 class ModLoader {
 public:

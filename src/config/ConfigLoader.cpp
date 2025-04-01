@@ -1,6 +1,7 @@
+#undef slots
+#include <Python.h>
 #include "config/ConfigLoader.h"
 #include "core/DataPaths.h"
-#include <Python.h>
 #include <QFile>
 #include <QTextStream>
 #include <QDebug>
