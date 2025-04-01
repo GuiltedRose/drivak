@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         build_type: [Release]
         c_compiler: [gcc, clang, cl]
         include:
@@ -23,7 +23,7 @@ jobs:
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
-          - os: ubuntu-latest
+          - os: macos-latest
             c_compiler: clang
             cpp_compiler: clang++
         exclude:
@@ -32,6 +32,12 @@ jobs:
           - os: windows-latest
             c_compiler: clang
           - os: ubuntu-latest
+            c_compiler: clang  # Removed Linux Clang
+          - os: ubuntu-latest
+            c_compiler: cl
+          - os: macos-latest
+            c_compiler: gcc
+          - os: macos-latest
             c_compiler: cl
 
     steps:
@@ -41,7 +47,7 @@ jobs:
       uses: jurplel/install-qt-action@v3
       with:
         version: '6.6.2'
-        host: ${{ runner.os == 'Windows' && 'windows' || 'linux' }}
+        host: ${{ runner.os }}
         target: 'desktop'
         arch: ${{ runner.os == 'Windows' && 'win64_msvc2019_64' || '' }}
 
