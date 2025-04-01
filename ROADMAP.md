@@ -20,7 +20,7 @@
 
 [X] Parse modinfo.json into GameDB (mod tracking metadata)
 
-[] Basic UI with Vulkan Rendering & Qt6
+[X] Basic UI with Vulkan Rendering & Qt6
 
 [X] config.py support (user-editable Python-based config)
 
