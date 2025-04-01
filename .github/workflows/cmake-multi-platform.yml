@@ -32,7 +32,7 @@ jobs:
           - os: windows-latest
             c_compiler: clang
           - os: ubuntu-latest
-            c_compiler: clang  # Removed Linux Clang
+            c_compiler: clang  # Replaced with macOS
           - os: ubuntu-latest
             c_compiler: cl
           - os: macos-latest
@@ -47,7 +47,7 @@ jobs:
       uses: jurplel/install-qt-action@v3
       with:
         version: '6.6.2'
-        host: ${{ runner.os }}
+        host: ${{ runner.os == 'Windows' && 'windows' || runner.os == 'macOS' && 'mac' || 'linux' }}
         target: 'desktop'
         arch: ${{ runner.os == 'Windows' && 'win64_msvc2019_64' || '' }}
 
