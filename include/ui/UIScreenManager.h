@@ -17,6 +17,9 @@ public:
     void draw();
     std::shared_ptr<UIScreen> getActiveScreen() const;
 
+    void handleKeyPress(int key);
+    void handleMouseClick(int x, int y);
+
 private:
     std::stack<std::shared_ptr<UIScreen>> screenStack;
     std::unordered_map<std::string, std::shared_ptr<UIScreen>> screenRegistry;

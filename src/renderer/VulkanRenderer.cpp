@@ -1,5 +1,6 @@
 #include "renderer/VulkanRenderer.h"
 #include <iostream>
+#include <fstream>
 
 VulkanRenderer::VulkanRenderer() {
     std::cout << "[Vulkan] Renderer created." << std::endl;
@@ -560,21 +561,228 @@ void VulkanRenderer::endFrame() {
         std::abort();
     }
 
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        recreateSwapchain();  // <-- this is where it goes
+    } else if (result != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to present swapchain image!" << std::endl;
+        std::abort();
+    }
+
     std::cout << "[Vulkan] Frame submitted and presented." << std::endl;
 }
 
-void VulkanRenderer::applyTheme(const Theme& theme) {
+void VulkanRenderer::createPipeline() {
+    std::cout << "[Vulkan] Creating graphics pipeline..." << std::endl;
+
+    // 1. Load shaders
+    auto vertShaderCode = loadShader("shaders/vert.spv");
+    auto fragShaderCode = loadShader("shaders/frag.spv");
+
+    VkShaderModule vertModule = createShaderModule(vertShaderCode);
+    VkShaderModule fragModule = createShaderModule(fragShaderCode);
+
+    VkPipelineShaderStageCreateInfo vertStage{};
+    vertStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertStage.module = vertModule;
+    vertStage.pName = "main";
+
+    VkPipelineShaderStageCreateInfo fragStage{};
+    fragStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragStage.module = fragModule;
+    fragStage.pName = "main";
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = { vertStage, fragStage };
+
+    // 2. Vertex input (none for now)
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 0;
+    vertexInputInfo.vertexAttributeDescriptionCount = 0;
+
+    // 3. Input assembly
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+    // 4. Viewport & scissor
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(swapchainExtent.width);
+    viewport.height = static_cast<float>(swapchainExtent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor{};
+    scissor.offset = { 0, 0 };
+    scissor.extent = swapchainExtent;
+
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.pViewports = &viewport;
+    viewportState.scissorCount = 1;
+    viewportState.pScissors = &scissor;
+
+    // 5. Rasterizer
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.depthBiasEnable = VK_FALSE;
+
+    // 6. Multisampling (disabled)
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    // 7. Color blend (no alpha blend for now)
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT |
+        VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT |
+        VK_COLOR_COMPONENT_A_BIT;
+    colorBlendAttachment.blendEnable = VK_FALSE;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+
+    // 8. Pipeline layout (empty for now — no uniforms or descriptors yet)
+    VkPipelineLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+
+    if (vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to create pipeline layout!" << std::endl;
+        std::abort();
+    }
+
+    // 9. Create graphics pipeline
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.layout = pipelineLayout;
+    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.subpass = 0;
+    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to create graphics pipeline!" << std::endl;
+        std::abort();
+    }
+
+    vkDestroyShaderModule(device, fragModule, nullptr);
+    vkDestroyShaderModule(device, vertModule, nullptr);
+
+    std::cout << "[Vulkan] Graphics pipeline created successfully." << std::endl;
+}
+
+VkShaderModule VulkanRenderer::createShaderModule(const std::vector<char>& code) {
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = code.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+    VkShaderModule shaderModule;
+    if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        std::cerr << "[Vulkan] Failed to create shader module!" << std::endl;
+        std::abort();
+    }
+
+    return shaderModule;
+}
+
+void VulkanRenderer::cleanupSwapchain() {
+    for (auto framebuffer : framebuffers) {
+        vkDestroyFramebuffer(device, framebuffer, nullptr);
+    }
+    framebuffers.clear();
+
+    for (auto view : swapchainImageViews) {
+        vkDestroyImageView(device, view, nullptr);
+    }
+    swapchainImageViews.clear();
+
+    vkDestroySwapchainKHR(device, swapchain, nullptr);
+
+    // Optional: destroy pipeline if dependent on render pass size
+    vkDestroyPipeline(device, graphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+}
+
+void VulkanRenderer::recreateSwapchain() {
+    vkDeviceWaitIdle(device); // make sure GPU is not using anything
+
+    std::cout << "[Vulkan] Recreating swapchain..." << std::endl;
+
+    cleanupSwapchain();                // destroy old resources
+    createSwapchain();                 // rebuild swapchain
+    createRenderPass();               // (optional if format/layout changed)
+    createPipeline();                 // recreate pipeline (needed if framebuffer size is used)
+    createFramebuffers();             // recreate framebuffer chain
+    createCommandBuffers();           // reallocate command buffers
+
+    std::cout << "[Vulkan] Swapchain recreation complete." << std::endl;
+}
+
+void VulkanRenderer::applyTheme(const ThemeLoader& theme) {
     currentTheme = theme;
     std::cout << "[Vulkan] Applied theme: " << theme.name << std::endl;
     // In future: update shader uniforms or descriptor sets with theme color/font data
 }
 
 void VulkanRenderer::drawText(const std::string& text, int x, int y) {
-    std::cout << "[Vulkan] Drawing text: '" << text << "' at (" << x << ", " << y << ")" << std::endl;
-    // Actual Vulkan text rendering would happen here
+    textQueue.push_back({ text, x, y });
+    std::cout << "[Vulkan] Queued text: '" << text << "' at (" << x << ", " << y << ")" << std::endl;
 }
 
 void VulkanRenderer::renderFrame() {
     std::cout << "[Vulkan] Rendering frame with current UI..." << std::endl;
-    // Swapchain present logic goes here
+    for (const auto& entry : textQueue) {
+        std::cout << "[Vulkan] Rendering text: '" << entry.text
+                  << "' at (" << entry.x << ", " << entry.y << ")" << std::endl;
+    
+        // In future: submit vertex data for each glyph here
+    }
+    
+    // Clear the queue for next frame
+    textQueue.clear();
+    
 }
+
+void VulkanRenderer::cleanup() {
+    vkDeviceWaitIdle(device);
+    cleanupSwapchain();
+
+    vkDestroyPipeline(device, graphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+    vkDestroyCommandPool(device, commandPool, nullptr);
+    vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
+    vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
+    vkDestroyFence(device, inFlightFence, nullptr);
+
+    vkDestroyDevice(device, nullptr);
+    vkDestroySurfaceKHR(instance, surface, nullptr);
+    vkDestroyInstance(instance, nullptr);
+
+    std::cout << "[Vulkan] Shutdown complete." << std::endl;
+}
+

@@ -1,24 +1,39 @@
 #pragma once
 
+#include <vulkan/vulkan.h>
+#ifdef _WIN32
+    // Windows-specific includes
+    #include <windows.h>   // For Windows-specific APIs
+#elif defined(__linux__)
+    #include <X11/Xlib.h> 
+    #include <wayland-client.h>
+    #include <unistd.h>      // For Linux-specific system calls
+#endif
+#include <vector>
 #include <QString>
 #include <memory>
-#include "core/Theme.h"
+#include "core/ThemeLoader.h"
 
 struct PlatformHandle {
     enum Type { X11, Wayland } type;
-
-    union {
-        struct {
+    union PlatformData {
+        struct X11Data {
             Display* x_display;
             Window x_window;
-        };
-        struct {
-            wl_display* wl_display;
-            wl_surface* wl_surface;
-        };
-    };
+        } x11;
+
+        struct WaylandData {
+            wl_display* wayland_display;  // Changed name
+            wl_surface* wayland_surface;  // Changed name
+        } wayland;
+    } platformData;
 };
 
+
+struct QueuedText {
+    std::string text;
+    int x, y;
+};
 
 class VulkanRenderer {
 public:
@@ -32,11 +47,11 @@ public:
     void endFrame();
 
     void drawText(const QString& text, int x, int y);
-    void applyTheme(const Theme& theme);
+    void applyTheme(const ThemeLoader& theme);
 
 private:
     void* windowHandle = nullptr;
-    Theme currentTheme;
+    ThemeLoader currentTheme;
 
     uint32_t currentImageIndex = 0;
 
@@ -53,12 +68,18 @@ private:
     VkSemaphore imageAvailableSemaphore;
     VkSemaphore renderFinishedSemaphore;
     VkFence inFlightFence;
+    VkPipelineLayout pipelineLayout;
+    VkPipeline graphicsPipeline;
+
+    VkShaderModule createShaderModule(const std::vector<char>& code);
 
     std::vector<VkImage> swapchainImages;
     std::vector<VkImageView> swapchainImageViews;
     std::vector<VkFramebuffer> framebuffers;
     std::vector<VkCommandBuffer> commandBuffers;
-
+    std::vector<QueuedText> textQueue;
+    
+    std::vector<char> loadShader(const std::string& path);
 
     // Internal Vulkan handles (VkInstance, VkDevice, etc.)
     void createInstance();
@@ -71,7 +92,11 @@ private:
     void createCommandPool();
     void createSyncObjects();
     void createPipeline();
+    
     void cleanup();
+    void recreateSwapchain();
+    void cleanupSwapchain();  // helper for teardown
+
 
     // Add more Vulkan objects as needed
 };

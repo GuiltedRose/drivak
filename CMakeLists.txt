@@ -15,14 +15,23 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # OS Platform Detection
 if(WIN32)
     set(DRIVAK_PLATFORM "Windows")
+    # Windows-specific Vulkan dependencies (e.g., VK_KHR_win32_surface)
+    find_package(Vulkan REQUIRED)
+    message(STATUS "Target Platform: ${DRIVAK_PLATFORM}")
 elseif(UNIX AND NOT APPLE)
     set(DRIVAK_PLATFORM "Linux")
+    # Linux-specific dependencies (X11 or Wayland)
+    find_package(Vulkan REQUIRED)
+    message(STATUS "Target Platform: ${DRIVAK_PLATFORM}")
 elseif(APPLE)
     set(DRIVAK_PLATFORM "macOS")
+    # macOS-specific setup (if Vulkan support is available)
+    find_package(Vulkan REQUIRED)
+    message(STATUS "Target Platform: ${DRIVAK_PLATFORM}")
 else()
     set(DRIVAK_PLATFORM "Unknown")
+    message(STATUS "Target Platform: ${DRIVAK_PLATFORM}")
 endif()
-message(STATUS "Target Platform: ${DRIVAK_PLATFORM}")
 
 message(STATUS "Linking spell scrolls...")
 
@@ -109,10 +118,18 @@ target_link_libraries(drivak
     Qt6::Gui
     Qt6::Widgets
     ${Python3_LIBRARIES}
+    Vulkan::Vulkan  # Linking Vulkan if available
 )
 
 # Include Python headers
 target_include_directories(drivak PRIVATE ${Python3_INCLUDE_DIRS})
+
+# Platform-specific includes for VulkanRenderer (Windows/Linux specific)
+if(WIN32)
+    target_compile_definitions(drivak PRIVATE DRIVAK_PLATFORM_WINDOWS)
+elseif(UNIX AND NOT APPLE)
+    target_compile_definitions(drivak PRIVATE DRIVAK_PLATFORM_LINUX)
+endif()
 
 # ==== Compiler Warnings ====
 if(MSVC)
@@ -120,9 +137,6 @@ if(MSVC)
 else()
     target_compile_options(drivak PRIVATE -Wall -Wextra -pedantic)
 endif()
-
-# ==== Installation Target ====
-install(TARGETS drivak RUNTIME DESTINATION bin)
 
 # ==== Installation Target ====
 install(TARGETS drivak RUNTIME DESTINATION bin)

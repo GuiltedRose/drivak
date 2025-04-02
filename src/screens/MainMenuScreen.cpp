@@ -34,3 +34,26 @@ MainMenuScreen::MainMenuScreen() {
 void MainMenuScreen::draw() {
     screen.draw();
 }
+
+// Implement missing pure virtual functions
+
+void MainMenuScreen::onEnter() {
+    // Logic for when this screen is first entered
+    std::cout << "[UI] Entered Main Menu Screen.\n";
+}
+
+void MainMenuScreen::render(VulkanRenderer& renderer) {
+    // Handle Vulkan rendering
+    std::cout << "[UI] Rendering Main Menu Screen.\n";
+    screen.render(renderer);
+}
+
+void MainMenuScreen::handleInput(QKeyEvent* event) {
+    // Handle keyboard input
+    UIScreenManager::getInstance().handleKeyPress(event);
+}
+
+void MainMenuScreen::handleInput(QMouseEvent* event) {
+    // Handle mouse input
+    UIScreenManager::getInstance().handleMouseClick(event);
+}

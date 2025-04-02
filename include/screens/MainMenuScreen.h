@@ -6,10 +6,15 @@
 class MainMenuScreen : public UIScreen {
 public:
     MainMenuScreen();
-    void draw();
+    void draw() override;
+    void onEnter() override;
+    void render(VulkanRenderer& renderer) override;
+    void handleInput(QKeyEvent* event) override;
+    void handleInput(QMouseEvent* event) override;
+
 
 private:
-    UIScreen screen;
+    std::shared_ptr<UIScreen> screen; 
 
     // Optional: store direct refs to interactive elements
     std::shared_ptr<UIButton> startButton;
